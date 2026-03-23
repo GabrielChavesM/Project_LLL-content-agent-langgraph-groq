@@ -1,22 +1,17 @@
 import os
-import operator
-from typing import TypedDict, Annotated
+from typing import TypedDict
 from dotenv import load_dotenv
 
-# --- LangChain Imports ---
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
-# --- LangGraph Imports ---
 from langgraph.graph import StateGraph, END
 
-# Importa as keys do dotenv
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
 
-# --- Configuração do LLM ---
 llm = ChatGroq(
     model_name="llama-3.1-8b-instant",
     temperature=0.7,
@@ -24,21 +19,20 @@ llm = ChatGroq(
 )
 
 # ====================================================================
-# I. DEFINIÇÃO DO ESTADO DO GRAFO
+# I. DEFINITION OF THE GRAPH STATE
 # ====================================================================
-
 class ContentAgentState(TypedDict):
     topic: str
-    outline: Annotated[str, operator.add] 
-    content: Annotated[str, operator.add] 
-    revision_needed: bool 
-    review_feedback: str 
-    revision_count: int  # Contador de revisões
+    outline: str
+    content: str
+    revision_needed: bool
+    review_feedback: str
+    revision_count: int
+
 
 # ====================================================================
-# II. DEFINIÇÃO DOS NÓS
+# II. DEFINITION OF NODES
 # ====================================================================
-
 def plan_content(state: ContentAgentState):
     print("--- 1. EXECUTANDO PLANEAMENTO: Criando Esboço ---")
     topic = state["topic"]
@@ -51,7 +45,8 @@ def plan_content(state: ContentAgentState):
     chain = prompt | llm
     outline_result = chain.invoke({"topic": topic}).content
     
-    return {"outline": outline_result, "content": "", "review_feedback": "", "revision_count": 0} 
+    return {"outline": outline_result, "content": "", "review_feedback": "", "revision_count": 0}
+
 
 def draft_content(state: ContentAgentState):
     topic = state["topic"]
@@ -64,7 +59,8 @@ def draft_content(state: ContentAgentState):
     if is_redraft:
         print(f"--- 2b. EXECUTANDO REDAÇÃO: Revisando o Rascunho (Revisão {revision_count}) ---")
         system_content = f"""
-Você é um redator profissional altamente detalhista. Sua tarefa é REESCREVER O ARTIGO COMPLETO do zero, seguindo rigorosamente o esboço fornecido e resolvendo *todos* os problemas listados no feedback crítico.
+Você é um redator profissional. Reescreva o artigo completo do zero, seguindo rigorosamente o esboço e resolvendo *todos* os problemas listados no feedback.
+**NÃO INCLUA O FEEDBACK NO ARTIGO FINAL.** Escreva apenas o conteúdo do artigo.
 Preste atenção especial a gramática, ortografia, completude e tom amigável-profissional.
 """
         user_content = f"""
@@ -95,7 +91,8 @@ REESCREVA O ARTIGO COMPLETO.
         "revision_needed": is_redraft,
         "review_feedback": feedback,
         "revision_count": revision_count
-    } 
+    }
+
 
 def review_content(state: ContentAgentState):
     print(f"--- 3. EXECUTANDO REVISÃO (Revisão {state.get('revision_count',0)}) ---")
@@ -117,7 +114,6 @@ Primeiros 1000 caracteres do artigo:\n{content[:1000]}...
 
     result_keyword = full_review_result.split(':')[0].strip().upper()
 
-    # Limite máximo de revisões = 5
     MAX_REVISIONS = 5
     if state.get("revision_count",0) >= MAX_REVISIONS:
         print(f"⚠️ Limite de revisões ({MAX_REVISIONS}) atingido. Forçando publicação.")
@@ -131,14 +127,14 @@ Primeiros 1000 caracteres do artigo:\n{content[:1000]}...
         return {"revision_needed": False, "review_feedback": "OK"}
 
 # ====================================================================
-# III. LÓGICA DO GRAFO
+# III. GRAPH LOGIC
 # ====================================================================
-
 def should_continue(state: ContentAgentState):
     if state["revision_needed"] and state.get("revision_count",0) < 5:
         return "re_draft"
     else:
         return "publish"
+
 
 def create_agent_graph():
     workflow = StateGraph(ContentAgentState)
@@ -156,14 +152,13 @@ def create_agent_graph():
         {"re_draft": "draft", "publish": END}
     )
 
-    # Mantém recursion_limit padrão (25)
     app = workflow.compile()
     return app
 
-# ====================================================================
-# IV. EXECUÇÃO
-# ====================================================================
 
+# ====================================================================
+# IV. EXECUTION
+# ====================================================================
 if __name__ == "__main__":
     os.environ.setdefault("LANGCHAIN_API_KEY", LANGCHAIN_API_KEY)
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
