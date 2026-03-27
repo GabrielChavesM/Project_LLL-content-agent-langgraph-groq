@@ -1,5 +1,8 @@
-langchain
-langgraph
-langchain-groq
-pydantic
 python-dotenv
+requests
+httpx
+beautifulsoup4
+langchain
+langchain-core
+langchain-openai
+langgraph
